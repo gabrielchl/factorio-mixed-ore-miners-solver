@@ -70,8 +70,12 @@ for direction in ["horizontal", "vertical"]:
 # GUI
 
 dpg.create_context()
-dpg.create_viewport(width=1600, height=1400, x_pos=500, y_pos=200, title="Weeeee")
+dpg.create_viewport(width=1800, height=1400, x_pos=700, y_pos=400, title="Weeeee", clear_color=(30, 30, 30))
 dpg.setup_dearpygui()
+
+with dpg.font_registry():
+    default_font = dpg.add_font("FiraMono-Regular.ttf", 20)
+    dpg.bind_font(default_font)
 
 debug_info = {
     "position": None,
@@ -157,7 +161,7 @@ def click_handler():
     offset_y = dpg.get_value("offset_y_slider")
 
     debug_info["position"] = position
-    debug_info["ore"] = map[position] if position in map else "None"
+    debug_info["ore"] = map[position] if position in map else ""
     debug_info["miner"] = None
     for lane in miners[direction][offset_x][offset_y].values():
         for pair in lane.values():
@@ -168,8 +172,8 @@ def click_handler():
                     break
     dpg.set_value("position_text", "position: " + str(debug_info["position"]))
     dpg.set_value("ore_text", "ore: " + str(debug_info["ore"]))
-    dpg.set_value("miner_position_text", "  position: " + str(debug_info["miner"]["position"] if debug_info["miner"] else None))
-    dpg.set_value("miner_ore_ratio_text", "  ore ratio:\n    " + ("\n    ".join([f"{k}: {v}" for k, v in debug_info["miner"]["ore_ratio"].items()]) if debug_info["miner"] else "None"))
+    dpg.set_value("miner_position_text", "  position: " + str(debug_info["miner"]["position"] if debug_info["miner"] else ""))
+    dpg.set_value("miner_ore_ratio_text", "  ore ratio:\n    " + ("\n    ".join([f"{k}: {v}" for k, v in debug_info["miner"]["ore_ratio"].items()]) if debug_info["miner"] else ""))
 
 with dpg.window(label="Map", autosize=True):
     with dpg.drawlist(
@@ -184,7 +188,6 @@ with dpg.window(label="Debug", pos=(bounding_box_size[0] * RENDER_SCALE + 30, 0)
     dpg.add_combo(label="Direction", items=["vertical", "horizontal"], default_value="vertical", tag="direction_combo", callback=lambda: update_miners_display())
     dpg.add_slider_int(label="Offset X", min_value=0, max_value=6, tag="offset_x_slider", callback=lambda: update_miners_display())
     dpg.add_slider_int(label="Offset Y", min_value=0, max_value=6, tag="offset_y_slider", callback=lambda: update_miners_display())
-    dpg.add_text("Click on the map to see positional info here.")
     dpg.add_text("")
     dpg.add_text("position: ", tag="position_text")
     dpg.add_text("ore: ", tag="ore_text")
