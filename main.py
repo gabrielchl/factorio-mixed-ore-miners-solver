@@ -221,7 +221,7 @@ def click_handler():
     dpg.set_value("ore_text", "ore: " + str(debug_info["ore"]))
     dpg.set_value("miner_position_text", "  position: " + str(debug_info["miner"]["position"] if debug_info["miner"] else ""))
     dpg.set_value("miner_ore_ratio_text", "  ore ratio:\n    " + ("\n    ".join([f"{k}: {v}" for k, v in debug_info["miner"]["ore_ratio"].items()]) if debug_info["miner"] else ""))
-    dpg.set_value("lane_ore_production_text", "  ore count:\n    " + ("\n    ".join([f"{k}: {v}" for k, v in ore_production_in_lane.items()]) if ore_production_in_lane else "")) 
+    dpg.set_value("lane_ore_production_text", "  ore production:\n    " + ("\n    ".join([f"{k}: {v}" for k, v in ore_production_in_lane.items()]) if ore_production_in_lane else "")) 
 
 with dpg.window(label="Map", autosize=True):
     with dpg.drawlist(
