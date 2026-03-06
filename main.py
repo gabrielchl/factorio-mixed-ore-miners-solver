@@ -3,29 +3,41 @@ import math
 import dearpygui.dearpygui as dpg
 from collections import defaultdict
 
-def get_ore_production_in_lane(lane):
-    counter = {
+def add_ore_productions(ore_productions):
+    total_ore_production = {
         "coal": 0,
         "iron-ore": 0,
         "copper-ore": 0,
         "stone": 0,
     }
+    for ore_production in ore_productions:
+        for ore, production in ore_production.items():
+            total_ore_production[ore] += production
+    return total_ore_production
 
-    for pair in lane.values():
-        for side in pair.values():
-            for ore, count in side["ore_ratio"].items():
-                counter[ore] += count
+def get_ore_production_in_lane(lane):
+    return add_ore_productions([side["ore_ratio"] for pair in lane.values() for side in pair.values()])
 
-    return counter
+def get_ore_production_in_layout(layout):
+    return add_ore_productions([get_ore_production_in_lane(lane) for lane in layout.values() if lane])
 
-def check_lane_has_at_least_30_miners(lane):
+def get_lane_miners_count(lane):
     miner_count = 0
     for pair in lane.values():
-        for side in pair.values():
-            miner_count += 1
-            if miner_count >= 30:
-                return True
-    return False
+        miner_count += len(pair)
+    return miner_count
+
+temp_ore_ratio_goal = {
+    "coal": 1/30,
+    "iron-ore": 15/30,
+    "copper-ore": 14/30,
+    "stone": 0/30,
+}
+
+def get_score(ore_production):
+    ore_production_total = sum(ore_production.values())
+    ore_ratio = {ore: production / ore_production_total for ore, production in ore_production.items()}
+    return sum([abs(temp_ore_ratio_goal[ore] - ratio) for ore, ratio in ore_ratio.items()])
 
 file = open('ores.txt', 'r')
 if not file:
@@ -88,6 +100,55 @@ for direction in ["horizontal", "vertical"]:
                             "ore_ratio": ore_count,
                             "position": miner_position
                         }
+
+# solve
+for direction in miners.values():
+    for offset_x in direction.values():
+        for offset_y in offset_x.values():
+            offset = offset_y
+            lanes_to_delete = []
+            for laneId, lane in offset.items():
+                lane_miners_count = get_lane_miners_count(lane)
+                if lane_miners_count < 30:
+                    lanes_to_delete.append(laneId)
+                    continue
+                if lane_miners_count == 30:
+                    continue
+                while True:
+                    new_lane_miners_count = get_lane_miners_count(lane)
+                    if new_lane_miners_count <= 30:
+                        break
+                    lane_ore_production = get_ore_production_in_lane(lane)
+                    lane_score = get_score(lane_ore_production)
+                    worst_miner_removed_lane_score = None
+                    worst_miner_key = None
+                    for pairId, pair in lane.items():
+                        for sideId, side in pair.items():
+                            new_lane_ore_production = {ore: production - side["ore_ratio"][ore] for ore, production in lane_ore_production.items()}
+                            new_lane_score = get_score(new_lane_ore_production)
+                            if worst_miner_removed_lane_score is None or new_lane_score < worst_miner_removed_lane_score:
+                                worst_miner_removed_lane_score = new_lane_score
+                                worst_miner_key = (pairId, sideId)
+                    if worst_miner_key:
+                        pairId, sideId = worst_miner_key
+                        del lane[pairId][sideId]
+
+            for laneId in lanes_to_delete:
+                del offset[laneId]
+
+layout_scores = []
+for direction, offset_xs in miners.items():
+    for offset_x, offset_ys in offset_xs.items():
+        for offset_y, layout in offset_ys.items():
+            layout_ore_production = get_ore_production_in_layout(layout)
+            layout_score = get_score(layout_ore_production)
+            layout_scores.append(((direction, offset_x, offset_y), layout_score))
+layout_scores.sort(key=lambda x: x[1])
+
+print("Best horizontal layouts: ", [i for i in layout_scores if i[0][0] == "horizontal"][:3])
+print("Best vertical layouts: ", [i for i in layout_scores if i[0][0] == "vertical"][:3])
+print("Worst horizontal layouts: ", [i for i in layout_scores if i[0][0] == "horizontal"][-3:])
+print("Worst vertical layouts: ", [i for i in layout_scores if i[0][0] == "vertical"][-3:])
 
 # GUI
 
