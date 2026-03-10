@@ -146,12 +146,7 @@ def solve(ore_ratio_goal):
     t1 = time.perf_counter()
     print(f'Total solve time: {t1 - t0}s')
 
-    print("Best horizontal layouts: ", [i for i in layout_scores if i[0][0] == "horizontal"][:3])
-    print("Best vertical layouts: ", [i for i in layout_scores if i[0][0] == "vertical"][:3])
-    print("Worst horizontal layouts: ", [i for i in layout_scores if i[0][0] == "horizontal"][-3:])
-    print("Worst vertical layouts: ", [i for i in layout_scores if i[0][0] == "vertical"][-3:])
-
-    return miners
+    return miners, layout_scores
 
 # GUI
 
@@ -174,7 +169,7 @@ ui_configs = {
     },
 }
 
-ui_config = ui_configs["small"]
+ui_config = ui_configs["large"]
 
 dpg.create_context()
 dpg.create_viewport(width=ui_config["width"], height=ui_config["height"], x_pos=ui_config["x_pos"], y_pos=ui_config["y_pos"], title="Weeeee", clear_color=(30, 30, 30))
@@ -191,7 +186,9 @@ debug_info = {
     "miner": None,
 }
 
-def update_miners_display(solved_miners = None, highlight_miner_position = None):
+solved_miners = None
+
+def update_miners_display(highlight_miner_position = None):
     direction = dpg.get_value("direction_combo")
     offset_x = dpg.get_value("offset_x_slider")
     offset_y = dpg.get_value("offset_y_slider")
@@ -280,6 +277,7 @@ def update_miners_display(solved_miners = None, highlight_miner_position = None)
                 )
 
 def on_click_solve():
+    global solved_miners
     coal = dpg.get_value("coal_slider")
     iron_ore = dpg.get_value("iron_ore_slider")
     copper_ore = dpg.get_value("copper_ore_slider")
@@ -289,14 +287,28 @@ def on_click_solve():
     if total == 0:
         return
 
-    solved_miners = solve({
+    solved_miners, layout_scores = solve({
         "coal": coal / total,
         "iron-ore": iron_ore / total,
         "copper-ore": copper_ore / total,
         "stone": stone / total,
     })
 
-    update_miners_display(solved_miners)
+    update_miners_display()
+
+    dpg.delete_item("results_table_group", children_only=True)
+    with dpg.table(parent="results_table_group"):
+        dpg.add_table_column(label="Layout")
+        dpg.add_table_column(label="Score")
+        for layout_score in [layout_score for layout_score in layout_scores if layout_score[0][0] == "horizontal"][:3]:
+            with dpg.table_row():
+                dpg.add_text(f'({layout_score[0][0][0]}, {layout_score[0][1]}, {layout_score[0][2]})')
+                dpg.add_text(str(layout_score[1]))
+        for layout_score in [layout_score for layout_score in layout_scores if layout_score[0][0] == "vertical"][:3]:
+            with dpg.table_row():
+                dpg.add_text(f'({layout_score[0][0][0]}, {layout_score[0][1]}, {layout_score[0][2]})')
+                dpg.add_text(str(layout_score[1]))
+    dpg.add_spacer(height=20, parent="results_table_group")
 
 def on_click_map():
     click_position = dpg.get_drawing_mouse_pos()
@@ -350,6 +362,7 @@ with dpg.window(tag="root"):
             dpg.add_slider_int(label="Stone", tag="stone_slider")
             dpg.add_button(label="Solve", callback=on_click_solve)
             dpg.add_spacer(height=20)
+            dpg.add_group(tag="results_table_group")
             dpg.add_combo(label="Direction", items=["vertical", "horizontal"], default_value="vertical", tag="direction_combo", callback=lambda: update_miners_display())
             dpg.add_slider_int(label="Offset X", min_value=0, max_value=6, tag="offset_x_slider", callback=lambda: update_miners_display())
             dpg.add_slider_int(label="Offset Y", min_value=0, max_value=6, tag="offset_y_slider", callback=lambda: update_miners_display())
