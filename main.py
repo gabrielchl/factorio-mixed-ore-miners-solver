@@ -1,7 +1,9 @@
 import re
 import math
 import dearpygui.dearpygui as dpg
+import time
 from collections import defaultdict
+import copy
 
 def add_ore_productions(ore_productions):
     total_ore_production = {
@@ -27,17 +29,10 @@ def get_lane_miners_count(lane):
         miner_count += len(pair)
     return miner_count
 
-temp_ore_ratio_goal = {
-    "coal": 1/30,
-    "iron-ore": 15/30,
-    "copper-ore": 14/30,
-    "stone": 0/30,
-}
-
-def get_score(ore_production):
+def get_score(ore_production, ore_ratio_goal):
     ore_production_total = sum(ore_production.values())
     ore_ratio = {ore: production / ore_production_total for ore, production in ore_production.items()}
-    return sum([abs(temp_ore_ratio_goal[ore] - ratio) for ore, ratio in ore_ratio.items()])
+    return sum([abs(ore_ratio_goal[ore] - ratio) for ore, ratio in ore_ratio.items()])
 
 file = open('ores.txt', 'r')
 if not file:
@@ -63,7 +58,7 @@ bounding_box_size = (bounding_box[1][0] - bounding_box[0][0], bounding_box[1][1]
 
 # structure: horizontal/vertial - offsetx - offsety - lane - pair - side - {ore_ratio, position}
 inf_dict = lambda: defaultdict(inf_dict)
-miners = inf_dict()
+all_miners = inf_dict()
 for direction in ["horizontal", "vertical"]:
     lane_width = 7
     pair_width = 3
@@ -96,59 +91,67 @@ for direction in ["horizontal", "vertical"]:
                             continue
                         for ore, count in ore_count.items():
                             ore_count[ore] = count / total_ore_count
-                        miners[direction][offset_x][offset_y][lane][pair][side] = {
+                        all_miners[direction][offset_x][offset_y][lane][pair][side] = {
                             "ore_ratio": ore_count,
                             "position": miner_position
                         }
 
 # solve
-for direction in miners.values():
-    for offset_x in direction.values():
-        for offset_y in offset_x.values():
-            offset = offset_y
-            lanes_to_delete = []
-            for laneId, lane in offset.items():
-                lane_miners_count = get_lane_miners_count(lane)
-                if lane_miners_count < 30:
-                    lanes_to_delete.append(laneId)
-                    continue
-                if lane_miners_count == 30:
-                    continue
-                while True:
-                    new_lane_miners_count = get_lane_miners_count(lane)
-                    if new_lane_miners_count <= 30:
-                        break
-                    lane_ore_production = get_ore_production_in_lane(lane)
-                    lane_score = get_score(lane_ore_production)
-                    worst_miner_removed_lane_score = None
-                    worst_miner_key = None
-                    for pairId, pair in lane.items():
-                        for sideId, side in pair.items():
-                            new_lane_ore_production = {ore: production - side["ore_ratio"][ore] for ore, production in lane_ore_production.items()}
-                            new_lane_score = get_score(new_lane_ore_production)
-                            if worst_miner_removed_lane_score is None or new_lane_score < worst_miner_removed_lane_score:
-                                worst_miner_removed_lane_score = new_lane_score
-                                worst_miner_key = (pairId, sideId)
-                    if worst_miner_key:
-                        pairId, sideId = worst_miner_key
-                        del lane[pairId][sideId]
+def solve(ore_ratio_goal):
+    miners = copy.deepcopy(all_miners)
+    t0 = time.perf_counter()
+    for direction_key, direction in miners.items():
+        for offset_x_key, offset_x in direction.items():
+            for offset_y_key, offset_y in offset_x.items():
+                offset = offset_y
+                lanes_to_delete = []
+                for lane_id, lane in offset.items():
+                    lane_miners_count = get_lane_miners_count(lane)
+                    if lane_miners_count < 30:
+                        lanes_to_delete.append(lane_id)
+                        continue
+                    if lane_miners_count == 30:
+                        continue
+                    while True:
+                        new_lane_miners_count = get_lane_miners_count(lane)
+                        if new_lane_miners_count <= 30:
+                            break
+                        lane_ore_production = get_ore_production_in_lane(lane)
+                        lane_score = get_score(lane_ore_production, ore_ratio_goal)
+                        worst_miner_removed_lane_score = None
+                        worst_miner_key = None
+                        for pair_id, pair in lane.items():
+                            for side_id, side in pair.items():
+                                new_lane_ore_production = {ore: production - side["ore_ratio"][ore] for ore, production in lane_ore_production.items()}
+                                new_lane_score = get_score(new_lane_ore_production, ore_ratio_goal)
+                                if worst_miner_removed_lane_score is None or new_lane_score < worst_miner_removed_lane_score:
+                                    worst_miner_removed_lane_score = new_lane_score
+                                    worst_miner_key = (pair_id, side_id)
+                        if worst_miner_key:
+                            pair_id, side_id = worst_miner_key
+                            del lane[pair_id][side_id]
 
-            for laneId in lanes_to_delete:
-                del offset[laneId]
+                for lane_id in lanes_to_delete:
+                    del offset[lane_id]
 
-layout_scores = []
-for direction, offset_xs in miners.items():
-    for offset_x, offset_ys in offset_xs.items():
-        for offset_y, layout in offset_ys.items():
-            layout_ore_production = get_ore_production_in_layout(layout)
-            layout_score = get_score(layout_ore_production)
-            layout_scores.append(((direction, offset_x, offset_y), layout_score))
-layout_scores.sort(key=lambda x: x[1])
+    layout_scores = []
+    for direction, offset_xs in miners.items():
+        for offset_x, offset_ys in offset_xs.items():
+            for offset_y, layout in offset_ys.items():
+                layout_ore_production = get_ore_production_in_layout(layout)
+                layout_score = get_score(layout_ore_production, ore_ratio_goal)
+                layout_scores.append(((direction, offset_x, offset_y), layout_score))
+    layout_scores.sort(key=lambda x: x[1])
 
-print("Best horizontal layouts: ", [i for i in layout_scores if i[0][0] == "horizontal"][:3])
-print("Best vertical layouts: ", [i for i in layout_scores if i[0][0] == "vertical"][:3])
-print("Worst horizontal layouts: ", [i for i in layout_scores if i[0][0] == "horizontal"][-3:])
-print("Worst vertical layouts: ", [i for i in layout_scores if i[0][0] == "vertical"][-3:])
+    t1 = time.perf_counter()
+    print(f'Total solve time: {t1 - t0}s')
+
+    print("Best horizontal layouts: ", [i for i in layout_scores if i[0][0] == "horizontal"][:3])
+    print("Best vertical layouts: ", [i for i in layout_scores if i[0][0] == "vertical"][:3])
+    print("Worst horizontal layouts: ", [i for i in layout_scores if i[0][0] == "horizontal"][-3:])
+    print("Worst vertical layouts: ", [i for i in layout_scores if i[0][0] == "vertical"][-3:])
+
+    return miners
 
 # GUI
 
@@ -178,8 +181,9 @@ dpg.create_viewport(width=ui_config["width"], height=ui_config["height"], x_pos=
 dpg.setup_dearpygui()
 
 with dpg.font_registry():
-    default_font = dpg.add_font("FiraMono-Regular.ttf", ui_config["font_size"])
+    default_font = dpg.add_font("FiraMono-Regular.ttf", ui_config["font_size"] * 2)
     dpg.bind_font(default_font)
+    dpg.set_global_font_scale(0.5)
 
 debug_info = {
     "position": None,
@@ -187,8 +191,7 @@ debug_info = {
     "miner": None,
 }
 
-def update_miners_display():
-    """Redraw miners based on current input values"""
+def update_miners_display(solved_miners = None, highlight_miner_position = None):
     direction = dpg.get_value("direction_combo")
     offset_x = dpg.get_value("offset_x_slider")
     offset_y = dpg.get_value("offset_y_slider")
@@ -225,18 +228,38 @@ def update_miners_display():
         )
 
     # Draw miners for selected configuration
-    for lane_index, lane in miners[direction][offset_x][offset_y].items():
+    for lane_index, lane in all_miners[direction][offset_x][offset_y].items():
         has_miner_in_lane = False
-        for pair in lane.values():
-            for side in pair.values():
-                has_miner_in_lane = True
-                dpg.draw_rectangle(
-                    ((side["position"][0] - bounding_box[0][0]) * ui_config["render_scale"], (side["position"][1] - bounding_box[0][1]) * ui_config["render_scale"]),
-                    ((side["position"][0] + 3 - bounding_box[0][0]) * ui_config["render_scale"], (side["position"][1] + 3 - bounding_box[0][1]) * ui_config["render_scale"]),
-                    color=(255, 255, 255, 128),
-                    fill=(255, 255, 255, 32),
-                    parent="map_drawlist"
-                )
+        for pair_key, pair in lane.items():
+            for side_key, side in pair.items():
+                if solved_miners and solved_miners[direction][offset_x][offset_y][lane_index][pair_key][side_key]["position"]:
+                    has_miner_in_lane = True
+                    dpg.draw_rectangle(
+                        ((side["position"][0] - bounding_box[0][0]) * ui_config["render_scale"], (side["position"][1] - bounding_box[0][1]) * ui_config["render_scale"]),
+                        ((side["position"][0] + 3 - bounding_box[0][0]) * ui_config["render_scale"], (side["position"][1] + 3 - bounding_box[0][1]) * ui_config["render_scale"]),
+                        color=(150, 255, 150, 192),
+                        fill=(150, 255, 150, 48),
+                        parent="map_drawlist"
+                    )
+                else:
+                    dpg.draw_rectangle(
+                        ((side["position"][0] - bounding_box[0][0]) * ui_config["render_scale"], (side["position"][1] - bounding_box[0][1]) * ui_config["render_scale"]),
+                        ((side["position"][0] + 3 - bounding_box[0][0]) * ui_config["render_scale"], (side["position"][1] + 3 - bounding_box[0][1]) * ui_config["render_scale"]),
+                        color=(255, 255, 255, 32),
+                        fill=(255, 255, 255, 8),
+                        parent="map_drawlist"
+                    )
+                if highlight_miner_position and \
+                    lane_index == highlight_miner_position["lane_key"] and \
+                    pair_key == highlight_miner_position["pair_key"] and \
+                    side_key == highlight_miner_position["side_key"]:
+                    dpg.draw_rectangle(
+                        ((side["position"][0] - bounding_box[0][0]) * ui_config["render_scale"], (side["position"][1] - bounding_box[0][1]) * ui_config["render_scale"]),
+                        ((side["position"][0] + 3 - bounding_box[0][0]) * ui_config["render_scale"], (side["position"][1] + 3 - bounding_box[0][1]) * ui_config["render_scale"]),
+                        color=(255, 0, 0, 200),
+                        fill=(255, 0, 0, 100),
+                        parent="map_drawlist"
+                    )
         if has_miner_in_lane:
             lane_args = {
                 "color": (200, 160, 64, 64),
@@ -256,7 +279,26 @@ def update_miners_display():
                     **lane_args
                 )
 
-def click_handler():
+def on_click_solve():
+    coal = dpg.get_value("coal_slider")
+    iron_ore = dpg.get_value("iron_ore_slider")
+    copper_ore = dpg.get_value("copper_ore_slider")
+    stone = dpg.get_value("stone_slider")
+    total = coal + iron_ore + copper_ore + stone
+
+    if total == 0:
+        return
+
+    solved_miners = solve({
+        "coal": coal / total,
+        "iron-ore": iron_ore / total,
+        "copper-ore": copper_ore / total,
+        "stone": stone / total,
+    })
+
+    update_miners_display(solved_miners)
+
+def on_click_map():
     click_position = dpg.get_drawing_mouse_pos()
     position = (click_position[0] // ui_config["render_scale"] + bounding_box[0][0], click_position[1] // ui_config["render_scale"] + bounding_box[0][1])
 
@@ -268,15 +310,22 @@ def click_handler():
     debug_info["ore"] = map[position] if position in map else ""
     debug_info["miner"] = None
     ore_production_in_lane = {}
-    for lane in miners[direction][offset_x][offset_y].values():
-        for pair in lane.values():
-            for side in pair.values():
+    for lane_key, lane in all_miners[direction][offset_x][offset_y].items():
+        for pair_key, pair in lane.items():
+            for side_key, side in pair.items():
                 miner_position = side["position"]
+                if not miner_position:
+                    continue
                 if miner_position[0] <= position[0] < miner_position[0] + 3 and miner_position[1] <= position[1] < miner_position[1] + 3:
                     debug_info["miner"] = side
                     debug_info["lane"] = lane
 
                     ore_production_in_lane = get_ore_production_in_lane(lane)
+                    update_miners_display({
+                        "lane_key": lane_key,
+                        "pair_key": pair_key,
+                        "side_key": side_key,
+                    })
                     break
     dpg.set_value("position_text", "position: " + str(debug_info["position"]))
     dpg.set_value("ore_text", "ore: " + str(debug_info["ore"]))
@@ -284,31 +333,39 @@ def click_handler():
     dpg.set_value("miner_ore_ratio_text", "  ore ratio:\n    " + ("\n    ".join([f"{k}: {v}" for k, v in debug_info["miner"]["ore_ratio"].items()]) if debug_info["miner"] else ""))
     dpg.set_value("lane_ore_production_text", "  ore production:\n    " + ("\n    ".join([f"{k}: {v}" for k, v in ore_production_in_lane.items()]) if ore_production_in_lane else "")) 
 
-with dpg.window(label="Map", autosize=True):
-    with dpg.drawlist(
-        width=bounding_box_size[0] * ui_config["render_scale"],
-        height=bounding_box_size[1] * ui_config["render_scale"],
-        callback=click_handler,
-        tag="map_drawlist"
-    ):
-        pass
+with dpg.window(tag="root"):
+    with dpg.group(horizontal=True):
+        dpg.add_drawlist(
+            width=bounding_box_size[0] * ui_config["render_scale"],
+            height=bounding_box_size[1] * ui_config["render_scale"],
+            callback=on_click_map,
+            tag="map_drawlist"
+        )
 
-with dpg.window(label="Debug", pos=(bounding_box_size[0] * ui_config["render_scale"] + 30, 0), autosize=True):
-    dpg.add_combo(label="Direction", items=["vertical", "horizontal"], default_value="vertical", tag="direction_combo", callback=lambda: update_miners_display())
-    dpg.add_slider_int(label="Offset X", min_value=0, max_value=6, tag="offset_x_slider", callback=lambda: update_miners_display())
-    dpg.add_slider_int(label="Offset Y", min_value=0, max_value=6, tag="offset_y_slider", callback=lambda: update_miners_display())
-    dpg.add_text("")
-    dpg.add_text("position: ", tag="position_text")
-    dpg.add_text("ore: ", tag="ore_text")
-    dpg.add_text("miner:")
-    dpg.add_text("  position: ", tag="miner_position_text")
-    dpg.add_text("  ore ratio: ", tag="miner_ore_ratio_text")
-    dpg.add_text("lane:")
-    dpg.add_text("  ore production: ", tag="lane_ore_production_text")
+        with dpg.group(width=200):
+            dpg.add_text("Target ore:")
+            dpg.add_slider_int(label="Coal", tag="coal_slider")
+            dpg.add_slider_int(label="Iron Ore", tag="iron_ore_slider")
+            dpg.add_slider_int(label="Copper Ore", tag="copper_ore_slider")
+            dpg.add_slider_int(label="Stone", tag="stone_slider")
+            dpg.add_button(label="Solve", callback=on_click_solve)
+            dpg.add_spacer(height=20)
+            dpg.add_combo(label="Direction", items=["vertical", "horizontal"], default_value="vertical", tag="direction_combo", callback=lambda: update_miners_display())
+            dpg.add_slider_int(label="Offset X", min_value=0, max_value=6, tag="offset_x_slider", callback=lambda: update_miners_display())
+            dpg.add_slider_int(label="Offset Y", min_value=0, max_value=6, tag="offset_y_slider", callback=lambda: update_miners_display())
+            dpg.add_spacer(height=20)
+            dpg.add_text("position: ", tag="position_text")
+            dpg.add_text("ore: ", tag="ore_text")
+            dpg.add_text("miner:")
+            dpg.add_text("  position: ", tag="miner_position_text")
+            dpg.add_text("  ore ratio: ", tag="miner_ore_ratio_text")
+            dpg.add_text("lane:")
+            dpg.add_text("  ore production: ", tag="lane_ore_production_text")
 
 # Initial render
 update_miners_display()
 
+dpg.set_primary_window("root", True)
 dpg.show_viewport()
 dpg.start_dearpygui()
 dpg.destroy_context()
