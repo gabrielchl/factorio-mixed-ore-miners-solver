@@ -276,6 +276,13 @@ def update_miners_display(highlight_miner_position = None):
                     **lane_args
                 )
 
+def set_layout(direction, offset_x, offset_y):
+    print(direction, offset_x, offset_y)
+    dpg.set_value("direction_combo", direction)
+    dpg.set_value("offset_x_slider", offset_x)
+    dpg.set_value("offset_y_slider", offset_y)
+    update_miners_display()
+
 def on_click_solve():
     global solved_miners
     coal = dpg.get_value("coal_slider")
@@ -300,14 +307,17 @@ def on_click_solve():
     with dpg.table(parent="results_table_group"):
         dpg.add_table_column(label="Layout")
         dpg.add_table_column(label="Score")
-        for layout_score in [layout_score for layout_score in layout_scores if layout_score[0][0] == "horizontal"][:3]:
+        dpg.add_table_column(label="Action")
+        for layout_score in \
+            [layout_score for layout_score in layout_scores if layout_score[0][0] == "horizontal"][:3] + \
+            [layout_score for layout_score in layout_scores if layout_score[0][0] == "vertical"][:3]:
             with dpg.table_row():
                 dpg.add_text(f'({layout_score[0][0][0]}, {layout_score[0][1]}, {layout_score[0][2]})')
                 dpg.add_text(str(layout_score[1]))
-        for layout_score in [layout_score for layout_score in layout_scores if layout_score[0][0] == "vertical"][:3]:
-            with dpg.table_row():
-                dpg.add_text(f'({layout_score[0][0][0]}, {layout_score[0][1]}, {layout_score[0][2]})')
-                dpg.add_text(str(layout_score[1]))
+                dpg.add_button(
+                    label="Show",
+                    callback=lambda *args, ls=layout_score: set_layout(ls[0][0], ls[0][1], ls[0][2])
+                )
     dpg.add_spacer(height=20, parent="results_table_group")
 
 def on_click_map():
@@ -354,26 +364,29 @@ with dpg.window(tag="root"):
             tag="map_drawlist"
         )
 
-        with dpg.group(width=200):
-            dpg.add_text("Target ore:")
-            dpg.add_slider_int(label="Coal", tag="coal_slider")
-            dpg.add_slider_int(label="Iron Ore", tag="iron_ore_slider")
-            dpg.add_slider_int(label="Copper Ore", tag="copper_ore_slider")
-            dpg.add_slider_int(label="Stone", tag="stone_slider")
-            dpg.add_button(label="Solve", callback=on_click_solve)
-            dpg.add_spacer(height=20)
-            dpg.add_group(tag="results_table_group")
-            dpg.add_combo(label="Direction", items=["vertical", "horizontal"], default_value="vertical", tag="direction_combo", callback=lambda: update_miners_display())
-            dpg.add_slider_int(label="Offset X", min_value=0, max_value=6, tag="offset_x_slider", callback=lambda: update_miners_display())
-            dpg.add_slider_int(label="Offset Y", min_value=0, max_value=6, tag="offset_y_slider", callback=lambda: update_miners_display())
-            dpg.add_spacer(height=20)
-            dpg.add_text("position: ", tag="position_text")
-            dpg.add_text("ore: ", tag="ore_text")
-            dpg.add_text("miner:")
-            dpg.add_text("  position: ", tag="miner_position_text")
-            dpg.add_text("  ore ratio: ", tag="miner_ore_ratio_text")
-            dpg.add_text("lane:")
-            dpg.add_text("  ore production: ", tag="lane_ore_production_text")
+        with dpg.group():
+            with dpg.group(width=200):
+                dpg.add_text("Target ore:")
+                dpg.add_slider_int(label="Coal", tag="coal_slider")
+                dpg.add_slider_int(label="Iron Ore", tag="iron_ore_slider")
+                dpg.add_slider_int(label="Copper Ore", tag="copper_ore_slider")
+                dpg.add_slider_int(label="Stone", tag="stone_slider")
+                dpg.add_button(label="Solve", callback=on_click_solve)
+                dpg.add_spacer(height=20)
+            with dpg.group(width=400):
+                dpg.add_group(tag="results_table_group")
+            with dpg.group(width=200):
+                dpg.add_combo(label="Direction", items=["vertical", "horizontal"], default_value="vertical", tag="direction_combo", callback=lambda: update_miners_display())
+                dpg.add_slider_int(label="Offset X", min_value=0, max_value=6, tag="offset_x_slider", callback=lambda: update_miners_display())
+                dpg.add_slider_int(label="Offset Y", min_value=0, max_value=6, tag="offset_y_slider", callback=lambda: update_miners_display())
+                dpg.add_spacer(height=20)
+                dpg.add_text("position: ", tag="position_text")
+                dpg.add_text("ore: ", tag="ore_text")
+                dpg.add_text("miner:")
+                dpg.add_text("  position: ", tag="miner_position_text")
+                dpg.add_text("  ore ratio: ", tag="miner_ore_ratio_text")
+                dpg.add_text("lane:")
+                dpg.add_text("  ore production: ", tag="lane_ore_production_text")
 
 # Initial render
 update_miners_display()
